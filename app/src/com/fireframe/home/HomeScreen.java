@@ -629,18 +629,25 @@ public class HomeScreen extends FrameLayout {
             style(t, 28, medium);
             t.setText(items[i]);
             t.setPadding(px(28), px(18), px(48), px(18));
+            t.setSingleLine(true);
+            t.setEllipsize(TextUtils.TruncateAt.END);
             row.addView(t, new FrameLayout.LayoutParams(-2, -2));
             row.setOnClickListener(v -> { closeLayer(); pick.pick(which); });
             box.addView(row, new LinearLayout.LayoutParams(-1, -2));
             if (first == null) first = row;
         }
-        box.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        int maxMenuW = screenW - px(80);
+        box.measure(View.MeasureSpec.makeMeasureSpec(maxMenuW, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.UNSPECIFIED);
         int[] loc = new int[2];
         anchor.getLocationInWindow(loc);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2);
-        lp.leftMargin = Math.max(px(40), Math.min(loc[0], screenW - box.getMeasuredWidth() - px(40)));
+        int anchorRight = loc[0] + anchor.getWidth();
+        int leftMargin = anchorRight > screenW / 2 ? anchorRight - box.getMeasuredWidth() : loc[0];
+        lp.leftMargin = Math.max(px(40), Math.min(leftMargin, screenW - box.getMeasuredWidth() - px(40)));
         int below = loc[1] + anchor.getHeight() + px(16);
-        lp.topMargin = below + box.getMeasuredHeight() < screenH - px(40) ? below : loc[1] - box.getMeasuredHeight() - px(16);
+        int topMargin = below + box.getMeasuredHeight() < screenH - px(40) ? below : loc[1] - box.getMeasuredHeight() - px(16);
+        lp.topMargin = Math.max(px(40), Math.min(topMargin, screenH - box.getMeasuredHeight() - px(40)));
         layer.addView(box, lp);
         openLayer(layer, anchor, first);
     }
