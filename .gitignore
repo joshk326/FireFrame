@@ -2,3 +2,7 @@ out/
 key.jks
 disabled.txt
 .DS_Store
+.gradle/
+build/
+app/build/
+local.properties
