@@ -125,6 +125,7 @@ public class HomeScreen extends FrameLayout {
     GlassView glass;
     LinearLayout dockRow;
     TextView caption, clock, weather;
+    final AppMenu drawer;
 
     // TextClock stops ticking in an overlay window, so the time is kept here: updated on the minute.
     final Runnable tick = new Runnable() {
@@ -182,6 +183,7 @@ public class HomeScreen extends FrameLayout {
         s = screenW / 1920f; // laid out at 1920x1080, scaled to the real screen
         medium = Typeface.createFromAsset(ctx.getAssets(), "fonts/Inter-Medium.ttf");
         semibold = Typeface.createFromAsset(ctx.getAssets(), "fonts/Inter-SemiBold.ttf");
+        drawer = new AppMenu(this);
 
         root = this;
         root.setBackgroundColor(0xFF000000);
@@ -222,9 +224,7 @@ public class HomeScreen extends FrameLayout {
         View first = addIcon("image", 1920 - 140 - 76 * 3 - 24 * 2, new View.OnClickListener() {
             @Override public void onClick(View v) { nextWallpaper(); }
         });
-        addIcon("grid_view", 1920 - 140 - 76 * 2 - 24, new View.OnClickListener() {
-            @Override public void onClick(View v) { openDrawer(v); }
-        });
+        addIcon("grid_view", 1920 - 140 - 76 * 2 - 24, v -> drawer.open(v));
         View last = addIcon("settings", 1920 - 140 - 76, new View.OnClickListener() {
             @Override public void onClick(View v) { openSettingsMenu(v); }
         });
@@ -389,13 +389,13 @@ public class HomeScreen extends FrameLayout {
         List<String> out = new ArrayList<>();
         String saved = prefs.getString("dock", null);
         if (saved != null) {
-            for (String p : saved.split(",")) if (apps.containsKey(p)) out.add(p);
+            for (String p : saved.split(",")) if (apps.containsKey(p) && !AppMenu.isAppHidden(ctx, p)) out.add(p);
             return out;
         }
-        for (String p : DEFAULT_DOCK) if (apps.containsKey(p) && !out.contains(p)) out.add(p);
+        for (String p : DEFAULT_DOCK) if (apps.containsKey(p) && !out.contains(p) && !AppMenu.isAppHidden(ctx, p)) out.add(p);
         for (String p : apps.keySet()) {
             if (out.size() >= 6) break;
-            if (!out.contains(p) && !isSystem(p)) out.add(p);
+            if (!out.contains(p) && !isSystem(p) && !AppMenu.isAppHidden(ctx, p)) out.add(p);
         }
         return out;
     }
@@ -424,7 +424,7 @@ public class HomeScreen extends FrameLayout {
         for (String p : dock) dockRow.addView(tile(p, apps.get(p), 288, 200, true), new LinearLayout.LayoutParams(px(288), px(200)));
         if (dock.isEmpty()) {
             View add = textTile("Add apps", 288, 200);
-            add.setOnClickListener(this::openDrawer);
+            add.setOnClickListener(drawer::open);
             dockRow.addView(add, new LinearLayout.LayoutParams(px(288), px(200)));
         }
         if (layers.isEmpty()) dockRow.getChildAt(Math.min(keep, dockRow.getChildCount() - 1)).requestFocus();
@@ -542,32 +542,23 @@ public class HomeScreen extends FrameLayout {
     interface Pick { void pick(int i); }
 
     void appMenu(View anchor, final String p, boolean inDock) {
-        final int i = dock.indexOf(p);
-        if (inDock) {
-            menu(anchor, new String[] {"Move left", "Move right", "Remove from Home"}, which -> {
-                if (which == 2) dock.remove(i);
-                else {
-                    int j = which == 0 ? i - 1 : i + 1;
-                    if (j < 0 || j >= dock.size()) return;
-                    Collections.swap(dock, i, j);
-                }
-                saveDock();
-                buildDock();
-                int at = which == 2 ? Math.min(i, dock.size() - 1) : (which == 0 ? i - 1 : i + 1);
-                if (at >= 0 && at < dockRow.getChildCount()) dockRow.getChildAt(at).requestFocus();
-            });
-        } else {
-            menu(anchor, new String[] {i >= 0 ? "Remove from Home" : "Add to Home", "App info"}, which -> {
-                if (which == 1) {
-                    start(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + p)));
-                    return;
-                }
-                if (i >= 0) dock.remove(p); else dock.add(p);
-                saveDock();
-                buildDock();
-                showCaption(i >= 0 ? "Removed from Home" : "Added to Home");
-            });
+        if (!inDock) {
+            drawer.showTileMenu(anchor, p, installed().get(p));
+            return;
         }
+        final int i = dock.indexOf(p);
+        menu(anchor, new String[] {"Move left", "Move right", "Remove from Home"}, which -> {
+            if (which == 2) dock.remove(i);
+            else {
+                int j = which == 0 ? i - 1 : i + 1;
+                if (j < 0 || j >= dock.size()) return;
+                Collections.swap(dock, i, j);
+            }
+            saveDock();
+            buildDock();
+            int at = which == 2 ? Math.min(i, dock.size() - 1) : (which == 0 ? i - 1 : i + 1);
+            if (at >= 0 && at < dockRow.getChildCount()) dockRow.getChildAt(at).requestFocus();
+        });
     }
 
     void openSettingsMenu(View anchor) {
@@ -641,44 +632,7 @@ public class HomeScreen extends FrameLayout {
         openLayer(layer, anchor, first);
     }
 
-    void openDrawer(View anchor) {
-        FrameLayout layer = new FrameLayout(ctx);
-        layer.addView(new GlassView(ctx, 0, 0xA6000000), new FrameLayout.LayoutParams(-1, -1));
-        TextView title = new TextView(ctx);
-        style(title, 48, semibold);
-        title.setText("Apps");
-        layer.addView(title, at(140, 64, -2, -2));
-        TextView hint = new TextView(ctx);
-        style(hint, 24, medium);
-        hint.setAlpha(0.6f);
-        hint.setText("Hold OK or press Menu to add an app to Home");
-        layer.addView(hint, at(140, 136, -2, -2));
 
-        ScrollView sv = new ScrollView(ctx);
-        sv.setVerticalScrollBarEnabled(false);
-        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        sv.setClipToPadding(false);
-        sv.setPadding(px(110), px(20), px(110), px(80));
-        GridLayout grid = new GridLayout(ctx);
-        grid.setClipChildren(false);
-        grid.setColumnCount(6);
-        Map<String, String> apps = installed();
-        View first = null;
-        for (Map.Entry<String, String> a : apps.entrySet()) {
-            View t = tile(a.getKey(), a.getValue(), 270, 196, false);
-            GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-            lp.width = px(270);
-            lp.height = px(196);
-            lp.setMargins(px(5), px(5), px(5), px(5));
-            grid.addView(t, lp);
-            if (first == null) first = t;
-        }
-        sv.addView(grid);
-        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(-1, -1);
-        slp.topMargin = px(190);
-        layer.addView(sv, slp);
-        openLayer(layer, anchor, first);
-    }
 
     // Layers stack over the home screen; only the top one can take focus.
     void openLayer(ViewGroup layer, View returnFocus, View focus) {
