@@ -124,7 +124,7 @@ public class HomeScreen extends FrameLayout {
     ImageView wallView;
     GlassView glass;
     LinearLayout dockRow;
-    TextView caption, clock;
+    TextView caption, clock, weather;
 
     // TextClock stops ticking in an overlay window, so the time is kept here: updated on the minute.
     final Runnable tick = new Runnable() {
@@ -133,6 +133,14 @@ public class HomeScreen extends FrameLayout {
                     android.text.format.DateFormat.is24HourFormat(ctx) ? "H:mm" : "h:mm", new java.util.Date()));
             removeCallbacks(this);
             postDelayed(this, 60000 - System.currentTimeMillis() % 60000);
+        }
+    };
+
+    final Runnable pollWeather = new Runnable() {
+        @Override public void run() {
+            Weather.update(ctx, false, text -> weather.setText(text));
+            removeCallbacks(this);
+            postDelayed(this, Weather.POLL_INTERVAL);
         }
     };
     Bitmap blur;
@@ -187,10 +195,28 @@ public class HomeScreen extends FrameLayout {
         base = new FrameLayout(ctx);
         root.addView(base, new FrameLayout.LayoutParams(-1, -1));
 
+        LinearLayout centerBox = new LinearLayout(ctx);
+        centerBox.setOrientation(LinearLayout.VERTICAL);
+        centerBox.setGravity(Gravity.CENTER_HORIZONTAL);
+
         clock = new TextView(ctx);
-        style(clock, 66, medium);
+        style(clock, 120, medium);
+        clock.setGravity(Gravity.CENTER);
         clock.setShadowLayer(px(16), 0, px(2), 0x40000000);
-        base.addView(clock, at(140, 60, -2, -2));
+        centerBox.addView(clock, new LinearLayout.LayoutParams(-2, -2));
+
+        weather = new TextView(ctx);
+        style(weather, 32, medium);
+        weather.setGravity(Gravity.CENTER);
+        weather.setShadowLayer(px(10), 0, px(2), 0x40000000);
+        weather.setText(Weather.cached(ctx));
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(-2, -2);
+        wlp.topMargin = px(8);
+        centerBox.addView(weather, wlp);
+
+        FrameLayout.LayoutParams centerLp = new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL);
+        centerLp.topMargin = px(300);
+        base.addView(centerBox, centerLp);
 
         // Top right: wallpaper, all apps, settings.
         View first = addIcon("image", 1920 - 140 - 76 * 3 - 24 * 2, new View.OnClickListener() {
@@ -246,6 +272,7 @@ public class HomeScreen extends FrameLayout {
         time.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         ctx.registerReceiver(timeChanged, time);
         tick.run();
+        scheduleWeather();
     }
 
     @Override
@@ -253,7 +280,18 @@ public class HomeScreen extends FrameLayout {
         ctx.unregisterReceiver(packagesChanged);
         ctx.unregisterReceiver(timeChanged);
         removeCallbacks(tick);
+        removeCallbacks(pollWeather);
         super.onDetachedFromWindow();
+    }
+
+    void scheduleWeather() {
+        removeCallbacks(pollWeather);
+        long delay = Weather.nextPollDelay(ctx);
+        if (delay <= 0) {
+            pollWeather.run();
+        } else {
+            postDelayed(pollWeather, delay);
+        }
     }
 
     // fireframe.sh wallpaper starts the app with --es wallpaper custom (or a bundled name), and
@@ -269,6 +307,26 @@ public class HomeScreen extends FrameLayout {
                 return;
             }
         }
+        if (intent != null) {
+            String city = intent.getStringExtra("city");
+            String lat = intent.getStringExtra("lat");
+            String lon = intent.getStringExtra("lon");
+            String unit = intent.getStringExtra("unit");
+            if (city != null) {
+                Weather.setCity(ctx, city);
+                Weather.update(ctx, true, text -> weather.setText(text));
+                scheduleWeather();
+            } else if (lat != null && lon != null) {
+                Weather.setLocation(ctx, lat, lon);
+                Weather.update(ctx, true, text -> weather.setText(text));
+                scheduleWeather();
+            }
+            if (unit != null) {
+                Weather.setUnit(ctx, unit);
+                Weather.update(ctx, true, text -> weather.setText(text));
+                scheduleWeather();
+            }
+        }
         if (w == null || !choices().contains(w)) return;
         if (CUSTOM.equals(w)) { cachedKey = null; photoVersion++; } // a new photo under the same name
         prefs.edit().putString("wallpaper", w).apply();
@@ -282,6 +340,11 @@ public class HomeScreen extends FrameLayout {
         if (reset) while (!layers.isEmpty()) closeLayer();
         if (!wallpaperKey().equals(shownWallpaper) || seenPhotoVersion != photoVersion) showWallpaper(wallpaperKey());
         if ((appsChanged || seenDockVersion != dockVersion) && layers.isEmpty()) buildDock();
+        String cw = Weather.cached(ctx);
+        if (cw != null && !cw.isEmpty() && !cw.equals(weather.getText().toString())) {
+            weather.setText(cw);
+        }
+        if (Weather.nextPollDelay(ctx) <= 0) scheduleWeather();
         if (!layers.isEmpty() || dockRow.getChildCount() == 0) return;
         View f = findFocus();
         // Both copies keep focus on the same dock app, so swapping one for the other can't be seen.
