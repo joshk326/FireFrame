@@ -180,7 +180,7 @@ public class HomeScreen extends FrameLayout {
         ((WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(dm);
         screenW = Math.max(dm.widthPixels, dm.heightPixels);
         screenH = Math.min(dm.widthPixels, dm.heightPixels);
-        s = screenW / 1920f; // laid out at 1920x1080, scaled to the real screen
+        s = Math.min(screenW / 1920f, screenH / 1080f); // laid out at 1920x1080, scaled to fit the real screen
         medium = Typeface.createFromAsset(ctx.getAssets(), "fonts/Inter-Medium.ttf");
         semibold = Typeface.createFromAsset(ctx.getAssets(), "fonts/Inter-SemiBold.ttf");
         drawer = new AppMenu(this);
@@ -190,6 +190,9 @@ public class HomeScreen extends FrameLayout {
         wallView = new ImageView(ctx);
         wallView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         root.addView(wallView, new FrameLayout.LayoutParams(-1, -1));
+        View overlay = new View(ctx);
+        overlay.setBackgroundColor(0x40000000);
+        root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         View scrim = new View(ctx);
         scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[] {0x66000000, 0}));
         root.addView(scrim, new FrameLayout.LayoutParams(-1, px(300)));
@@ -253,7 +256,17 @@ public class HomeScreen extends FrameLayout {
         scroller.setClipChildren(false);
         scroller.addView(dockRow, new FrameLayout.LayoutParams(-2, -1));
         glass.addView(scroller, new FrameLayout.LayoutParams(-1, -1));
-        base.addView(glass, at(100, 680, 1720, 230));
+        FrameLayout.LayoutParams dockLp = new FrameLayout.LayoutParams(Math.min(px(1720), screenW - px(80)), px(230));
+        dockLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        dockLp.bottomMargin = px(70);
+        base.addView(glass, dockLp);
+
+        setOnApplyWindowInsetsListener((v, insets) -> {
+            int bottomInset = insets.getSystemWindowInsetBottom();
+            dockLp.bottomMargin = px(70) + bottomInset;
+            glass.setLayoutParams(dockLp);
+            return insets;
+        });
 
         showWallpaper(wallpaperKey());
         buildDock();

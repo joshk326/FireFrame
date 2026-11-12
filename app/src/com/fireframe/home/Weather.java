@@ -16,9 +16,9 @@ import java.net.URLEncoder;
 import java.util.Locale;
 
 // Fetches the current weather from Open-Meteo (https://open-meteo.com/) and caches it.
-// Polled at most once every 30 minutes.
+// Polled at most once every 60 minutes.
 public class Weather {
-    static final long POLL_INTERVAL = 30 * 60 * 1000L; // 30 minutes
+    static final long POLL_INTERVAL = 60 * 60 * 1000L; // 60 minutes
     static final String PREF_LAST_FETCH = "weather_last_fetch";
     static final String PREF_TEXT = "weather_text";
     static final String PREF_LAT = "weather_lat";
